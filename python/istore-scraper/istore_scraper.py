@@ -1,23 +1,86 @@
+""" I-STORE SCRAPPER
+
+    This script scrapes the appstore categories page and using the links present there, gets info of all the apps
+    present in the appstore.
+
+    Key points about the appstore:
+    1.  The category page is alphabetically indexed, each alphabet page having the url structure:
+        https://itunes.apple.com/us/genre/ios-<category-name>/<category-id>?mt=8&letter=<alphabet>&page=<page-number>
+    2.  If the requested page number is greater than the maximum page number of an alphabet, it always returns the same
+        page.
+
+    Functionality:
+    1.  All necessary info is maintained in the config file. It also contains fields for last category, alphabet and page
+        number scraped. If present, the next run will start from there only.
+    1.  Scrapes the category page to get category list. Structure is maintained in such a way that all the child
+        categories are scraped before its parent.
+    2.  Using category urls and key point(1) above, gets 5 details for all the apps - appid, app name, category,
+        subcategory and app url.
+    3.  Dumps the data in a single csv file with appropriate headers.
+
+"""
+
 import ConfigParser
 import csv
+import logging
 import os
 import requests
 import string
 from lxml import html
-from datetime import  datetime
 
 CONFIG_LOCATION = "config.cfg"
 dict_config = {}
 csv_writer = None
 file_object = None
-
+logger = None
 
 def read_config(config_file_location):
+    """ Updates the config dictionary
+
+    This function reads the config file and updates the config dictionary to be used in other functions.
+    """
     config = ConfigParser.ConfigParser()
     config.read(config_file_location)
     dict_config.update(config._sections['DOWNLOADER_CONFIG'])
 
+def set_logging(log_file_location):
+    """Sets the logging info
+
+    This function sets the logging parameters and logging format. Log file location is read from config dictionary.
+    """
+    global logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    fh = logging.FileHandler(log_file_location)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+def set_writer_object(output_directory, file_name):
+    """Creates output file object and csv writer    """
+
+    global csv_writer, file_object
+
+    file_name = os.path.join(output_directory, file_name)
+    if dict_config['last_category_scraped_name']:
+        file_object = open(file_name, 'a')
+    else:
+        file_object = open(file_name, 'w')
+
+    csv_writer = csv.writer(file_object, delimiter=',', quoting=csv.QUOTE_MINIMAL)
+
+    if not dict_config['last_category_scraped_name']:
+        csv_writer.writerow(['APP ID', 'APP NAME', 'CATEGORY', 'SUBCATEGORY', 'APP URL'])
+
+
 def save_state(reset=False):
+    """ Updates the config and closes the output file
+
+    Saves the final state at which the program ends. If True is passed as the parameter, it means that the program has
+    successfully ended and so it sets the record of last scraped entities to null. Else it records the last
+    scraped entities so that re-run can start from that point.
+    """
     config= ConfigParser.ConfigParser()
     config.read(CONFIG_LOCATION)
 
@@ -33,33 +96,25 @@ def save_state(reset=False):
     with open(CONFIG_LOCATION, 'wb') as configfile:
         config.write(configfile)
 
-def get_writer_object():
-    global csv_writer, file_object
-    if csv_writer:
-        return csv_writer
-    else:
-        file_name = 'APP_DETAILS.csv'
-        file_name = os.path.join(dict_config['output_dir'], file_name)
-        file_object = open(file_name, 'w')
-        csv_writer = csv.writer(file_object, delimiter=',', quoting=csv.QUOTE_MINIMAL)
-        csv_writer.writerow(['APP ID', 'APP NAME', 'CATEGORY', 'SUBCATEGORY', 'APP URL'])
-        return csv_writer
-
-def close_file():
-    global file_object
     if file_object:
         file_object.close()
 
 def get_page_tree(url):
+    """ Parses the given url and returns its content    """
+
     page = requests.get(url)
     return html.fromstring(page.text)
 
 def get_apps(category, subcategory, category_url, alphabet, page_num=1):
+    """Get details of all the apps for a given category and alphabet
+
+    Writes to the file only when 3000 apps has been scraped and updates the config dictionary once write is complete
+    """
     prev_app_name_list = []
     count = 0
     dict_app_url = {}
-    csv_writer = get_writer_object()
 
+    logger.info('Scraping apps with starting alphabet: %s' % alphabet)
     while True:
         current_app_list = []
         url = '%s&letter=%s&page=%s' % (category_url, alphabet, page_num)
@@ -80,27 +135,33 @@ def get_apps(category, subcategory, category_url, alphabet, page_num=1):
             for app_name, app_url in dict_app_url.iteritems():
                 app_id = app_url.split('/')[-1].split('?')[0][2:]
                 csv_writer.writerow([app_id, app_name, category, subcategory, app_url])
+
+            # update the config dictionary, dont save state now as it will be unnecessary writes
             dict_config['last_category_scraped_name'] = subcategory if subcategory else category
             dict_config['last_category_scraped_url'] = category_url
             dict_config['last_page_scraped'] = page_num
             dict_config['last_alphabet_scraped'] = alphabet
+
+            # write complete, reset the app dictionary and count
             dict_app_url = {}
             count = 0
 
         prev_app_name_list = current_app_list
         page_num += 1
 
+    # handle the case when 3000 apps were not reached in final run of the loop
     for app_name, app_url in dict_app_url.iteritems():
         app_id = app_url.split('/')[-1].split('?')[0][2:]
         csv_writer.writerow([app_id, app_name, category, subcategory, app_url])
-    save_state()
 
 def parse_app_list(category_url_list, dict_category_parent):
-    category_count = 0
+    """Parses all the categories and get app details
+
+    Calls get_apps() internally
+    """
     start_page_num = None
     start_alphabet = None
 
-    # create a list of all alphabets and append * - url corresponding to # in istore
     all_valid_suburls = [alphabet for alphabet in string.ascii_uppercase]
     all_valid_suburls.append('*')
 
@@ -119,8 +180,7 @@ def parse_app_list(category_url_list, dict_category_parent):
             subcategory = category
             category = dict_category_parent[category_url]
 
-        print 'starting with category: %s url:%s subcategory: %s' %(category, category_url, subcategory)
-        print datetime.now()
+        logger.info('parsing subcategory: %s of category: %s with url: %s.' %(subcategory, category, category_url))
         for alphabet in all_valid_suburls:
             if start_alphabet:
                 if alphabet == start_alphabet:
@@ -128,17 +188,19 @@ def parse_app_list(category_url_list, dict_category_parent):
                     start_alphabet = None
                 continue
             get_apps(category, subcategory, category_url, alphabet)
-        # one category completely processed, close the file
-        print datetime.now()
-        category_count += 1
 
-    close_file()
     save_state(True)
 
-def get_all_categories():
+def get_all_categories(url):
+    """Returns all categories list and parent dictionary present in app store
+
+    Parses the url given in config file, creates a list of (category name, category url) and a dictionary of mapping app
+    urls to parent category names.
+    """
+    logger.info('Scraping Main Categories page')
     dict_category_parent = {}
     category_url_list = []
-    tree = get_page_tree(dict_config['url'])
+    tree = get_page_tree(url)
 
     for column in ["list column first", "list column", "list column last"]:
         path = '//*[@id="genre-nav"]//ul[@class="%s"]/li' % column
@@ -159,9 +221,22 @@ def get_all_categories():
                     dict_category_parent[subcategory_url] = category_name
             category_url_list.append((category_name, category_url))
 
+    logger.info('Main categories page scraping complete')
     return category_url_list, dict_category_parent
+
 
 if __name__=='__main__':
     read_config(CONFIG_LOCATION)
-    category_url_list, dict_category_parent = get_all_categories()
-    parse_app_list(category_url_list, dict_category_parent)
+    set_logging(dict_config['log_file_location'])
+
+    try:
+        set_writer_object(dict_config['output_dir'], dict_config['file_name'])
+
+        category_url_list, dict_category_parent = get_all_categories(dict_config['url'])
+        parse_app_list(category_url_list, dict_category_parent)
+
+        save_state(True)
+    except Exception, err:
+        logger.info('Exception occured in the script.')
+        logger.exception(err)
+        save_state()
