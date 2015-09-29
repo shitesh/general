@@ -39,6 +39,10 @@ file_object = None
 logger = None
 
 def sslwrap(func):
+    """ Wraps the ssl version to be used
+
+    There is some SSL issue with requests package on Linux systems. This function solves that.
+    """
     @wraps(func)
     def bar(*args, **kw):
         kw['ssl_version'] = ssl.PROTOCOL_TLSv1
@@ -85,6 +89,8 @@ def set_writer_object(output_directory, file_name):
         csv_writer.writerow(['APP ID', 'APP NAME', 'CATEGORY', 'SUBCATEGORY', 'APP URL'])
 
 def send_mail(exception):
+    """Sends mails in case an exception occurs in the running script """
+
     MAIL_HOST = dict_config['smtp_host']
     MAIL_FROM = dict_config['mail_from']
     PASSWORD = dict_config['mail_from_password']
