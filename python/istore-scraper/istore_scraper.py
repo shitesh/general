@@ -26,13 +26,24 @@ import logging
 import os
 import requests
 import string
+import smtplib
+import ssl
+from functools import wraps
 from lxml import html
+from email.mime.text import MIMEText
 
 CONFIG_LOCATION = "config.cfg"
 dict_config = {}
 csv_writer = None
 file_object = None
 logger = None
+
+def sslwrap(func):
+    @wraps(func)
+    def bar(*args, **kw):
+        kw['ssl_version'] = ssl.PROTOCOL_TLSv1
+        return func(*args, **kw)
+    return bar
 
 def read_config(config_file_location):
     """ Updates the config dictionary
@@ -73,6 +84,29 @@ def set_writer_object(output_directory, file_name):
     if not dict_config['last_category_scraped_name']:
         csv_writer.writerow(['APP ID', 'APP NAME', 'CATEGORY', 'SUBCATEGORY', 'APP URL'])
 
+def send_mail(exception):
+    MAIL_HOST = dict_config['smtp_host']
+    MAIL_FROM = dict_config['mail_from']
+    PASSWORD = dict_config['mail_from_password']
+    MAIL_TO = dict_config['mail_to'].split(',')
+
+    subject = 'Exception occcured while parsing app store'
+
+    text = 'The following exception occured while parsing the app store: \n\n'
+    text = '%s %s' %(text, exception)
+
+    msg = MIMEText(text)
+    msg['To'] = ','. join([str(x) for x in MAIL_TO])
+    msg['From'] = MAIL_FROM
+    msg['Subject'] = subject
+    try:
+        smtpObj = smtplib.SMTP(MAIL_HOST)
+        smtpObj.starttls()
+        smtpObj.login(MAIL_FROM, PASSWORD)
+        smtpObj.sendmail(MAIL_FROM, MAIL_TO, msg.as_string())
+        smtpObj.close()
+    except Exception, e:
+       logger.exception(e)
 
 def save_state(reset=False):
     """ Updates the config and closes the output file
@@ -154,6 +188,11 @@ def get_apps(category, subcategory, category_url, alphabet, page_num=1):
         app_id = app_url.split('/')[-1].split('?')[0][2:]
         csv_writer.writerow([app_id, app_name, category, subcategory, app_url])
 
+    dict_config['last_category_scraped_name'] = subcategory if subcategory else category
+    dict_config['last_category_scraped_url'] = category_url
+    dict_config['last_page_scraped'] = page_num
+    dict_config['last_alphabet_scraped'] = alphabet
+
 def parse_app_list(category_url_list, dict_category_parent):
     """Parses all the categories and get app details
 
@@ -228,7 +267,7 @@ def get_all_categories(url):
 if __name__=='__main__':
     read_config(CONFIG_LOCATION)
     set_logging(dict_config['log_file_location'])
-
+    ssl.wrap_socket = sslwrap(ssl.wrap_socket)
     try:
         set_writer_object(dict_config['output_dir'], dict_config['file_name'])
 
@@ -239,4 +278,5 @@ if __name__=='__main__':
     except Exception, err:
         logger.info('Exception occured in the script.')
         logger.exception(err)
+        send_mail(err)
         save_state()
