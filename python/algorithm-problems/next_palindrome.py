@@ -1,32 +1,35 @@
-def roundUp(num):
+def round_up(num):
     length = len(str(num))
     increment = pow(10, ((length/2)+1))
     return ((num/increment)+1)*increment
 
 
-def getMiddle(num):
+def get_middle_digit(num):
     return str(num)[(len(str(num))-1)/2]
 
 
-def getLeftHalf(num):
+def get_left_half(num):
     return str(num)[:len(str(num))/2]
 
 
-def nextPalindrome(num):
+def next_palindrome(num):
     length = len(str(num))
-    oddDigits = (length % 2 != 0)
-    leftHalf = getLeftHalf(num)
-    middle = getMiddle(num)
-    if oddDigits:
+    is_odd = (length % 2 != 0)
+    left_half = get_left_half(num)
+    middle = get_middle_digit(num)
+    if is_odd:
         increment = pow(10, length/2)
-        newNum = int(leftHalf+middle+leftHalf[::-1])
+        new_number = int(left_half+middle+left_half[::-1])
     else:
         increment = int(1.1*pow(10, length/2))
-        newNum = int(leftHalf+leftHalf[::-1])
-    if newNum > num:
-        return newNum
+        new_number = int(left_half+left_half[::-1])
+    if new_number > num:
+        return new_number
     if middle != '9':
-        return newNum+increment
+        return new_number + increment
     else:
-        return nextPalindrome(roundUp(num))
+        return next_palindrome(round_up(num))
 
+if __name__ == '__main__':
+    number = raw_input('Enter the number')
+    print next_palindrome(number)
