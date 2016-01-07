@@ -59,4 +59,4 @@ def n_queens(count):
 
 
 if __name__ == '__main__':
-    n_queens(8)
+    n_queens(4)

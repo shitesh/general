@@ -1,11 +1,9 @@
 # given an input string, this will generate all permutations of the string
-
-
-
 def swap(input_str, index1, index2):
     temp = input_str[index1]
     input_str[index1] = input_str[index2]
     input_str[index2] = temp
+
 
 def permute(input_str, start_index, end_index):
     if start_index == end_index:
