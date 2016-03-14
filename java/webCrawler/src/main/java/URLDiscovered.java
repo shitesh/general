@@ -4,9 +4,6 @@ import edu.uci.ics.crawler4j.url.WebURL;
 import java.io.FileWriter;
 import java.io.IOException;
 
-/**
- * Created by shitesh on 2/19/16.
- */
 
 /* class to keep track of all the urls that were discovered. This will save the url in a file in format
         URL, URLType
@@ -22,15 +19,26 @@ public class URLDiscovered {
     private final String school = "usc.edu";
 
     public URLDiscovered() throws IOException{
-        csvWriter = new CSVWriter(new FileWriter(fileLocation), ',');
+        csvWriter = new CSVWriter(new FileWriter(fileLocation, true), ',');
+        String[] headers = {"URL", "URL Type"};
+        csvWriter.writeNext(headers);
     }
 
     public void processURL(WebURL webURL){
         String urlType = null;
 
-        if(webURL.getSubDomain().equals(department))
+        String subdomain = webURL.getSubDomain();
+        String domain = null;
+        if (subdomain!=null && subdomain.length()>1){
+            domain = subdomain+"."+webURL.getDomain();
+        }
+        else{
+            domain = webURL.getDomain();
+        }
+
+        if(domain.equals(department))
             urlType = "OK";
-        else if(webURL.getDomain().equals(school))
+        else if(domain.equals(school))
             urlType = "USC";
         else
             urlType = "outUSC";

@@ -4,57 +4,62 @@ import edu.uci.ics.crawler4j.url.WebURL;
 import java.io.IOException;
 import java.util.regex.Pattern;
 import org.apache.http.HttpStatus;
+import org.apache.log4j.BasicConfigurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 public class SimpleCrawler extends WebCrawler{
-    private static final Logger logger = LoggerFactory.getLogger(SimpleCrawler.class);
 
-    public static Pattern pattern = Pattern.compile(".*(\\.(css|js|gif|jpg" + "|png|mp3|mp3|zip|gz))$");
 
-    private URLDownload urlDownload;
-    private URLFetch urlFetch;
-    private URLDiscovered urlDiscovered;
+    private static Logger logger = LoggerFactory.getLogger(SimpleCrawler.class);
 
-    public SimpleCrawler() throws IOException{
-        urlDownload = new URLDownload();
-        urlFetch = new URLFetch();
-        urlDiscovered = new URLDiscovered();
+    private final String departmentName = "arch.usc.edu";
+
+    public SimpleCrawler(){
+        BasicConfigurator.configure();
     }
 
     @Override
     public boolean shouldVisit(Page referringPage, WebURL url){
         String href = url.getURL().toLowerCase();
+        Controller.urlDiscovered.processURL(url);
 
-        urlDiscovered.processURL(url);
-        return !pattern.matcher(href).matches() && href.startsWith("http://www.arch.usc.edu");
+        String subdomain = url.getSubDomain();
+        String domain = null;
+        if (subdomain!=null){
+            domain = subdomain+"."+url.getDomain();
+        }
+        else{
+            domain = url.getDomain();
+        }
 
+        if(!domain.equals(departmentName)){
+            String[] values = {"Should visit method filter", url.getURL(), domain};
+            Controller.urlError.processURL(values);
+            return false;
+        }
+        else{
+            return true;
+        }
+        //return domain.equals(departmentName);
     }
 
     @Override
     public void visit(Page page){
-        String url = page.getWebURL().getURL();
-
-        urlFetch.processURL(url, page.getStatusCode());
         try{
             if(page.getStatusCode() == HttpStatus.SC_OK){
-                urlDownload.processPage(page);
+                Controller.urlDownload.processPage(page);
 
             }
         }catch (IOException ioException){
+            System.out.println(ioException.getMessage());
             logger.error("Exception in running crawler" + ioException.toString());
         }
     }
 
     @Override
-    public void onBeforeExit(){
-        try{
-            urlDiscovered.close();
-            urlFetch.close();
-            urlDiscovered.close();
-        }catch (IOException ioException){
-            logger.error("Error while closing the files");
-        }
+    protected void handlePageStatusCode(WebURL webUrl, int statusCode, String statusDescription) {
+        Controller.urlFetch.processURL(webUrl.getURL(),statusCode);
     }
+
 }

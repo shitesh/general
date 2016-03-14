@@ -13,7 +13,9 @@ public class URLFetch{
     private final String fileLocation = "output/fetch.csv";
 
     public URLFetch() throws IOException{
-        csvWriter = new CSVWriter(new FileWriter(fileLocation), ',');
+        csvWriter = new CSVWriter(new FileWriter(fileLocation, true), ',');
+        String[] headers = {"URL", "HTTP Status Code"};
+        csvWriter.writeNext(headers);
     }
 
     public void processURL(String url, Integer statusCode){
